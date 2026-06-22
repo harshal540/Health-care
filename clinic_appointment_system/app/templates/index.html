@@ -3,77 +3,306 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Clinic Appointment Management System — book appointments, manage records, and more.">
     <title>Clinic Appointment System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Clinic Appointment System</h1>
-            <p>Register, login, view doctors, and book appointments from a simple UI.</p>
-        </header>
-        <main>
-            <section class="card" id="auth-section">
-                <h2>Authentication</h2>
-                <div class="tabs">
-                    <button id="tab-login" class="tab active">Login</button>
-                    <button id="tab-register" class="tab">Register</button>
-                </div>
 
-                <div id="login-form" class="tab-content active">
-                    <input type="text" id="login-username" placeholder="Username">
-                    <input type="password" id="login-password" placeholder="Password">
-                    <button id="login-button">Login</button>
-                </div>
+<!-- ================================================================ -->
+<!-- AUTH VIEW — Shown when not logged in                              -->
+<!-- ================================================================ -->
+<div id="auth-view" class="auth-wrapper">
+    <div class="auth-card">
+        <div class="logo">
+            <h1>🏥 <span>Clinic</span> System</h1>
+            <p>Appointment Management Portal</p>
+        </div>
 
-                <div id="register-form" class="tab-content">
-                    <select id="register-role">
-                        <option value="patient">Patient</option>
-                        <option value="doctor">Doctor</option>
-                    </select>
+        <div class="tabs">
+            <button id="tab-login" class="tab active">Login</button>
+            <button id="tab-register" class="tab">Register</button>
+        </div>
+
+        <!-- LOGIN TAB -->
+        <div id="login-form" class="tab-content active">
+            <div class="form-group">
+                <label for="login-username">Username</label>
+                <input type="text" id="login-username" placeholder="Enter your username">
+            </div>
+            <div class="form-group">
+                <label for="login-password">Password</label>
+                <input type="password" id="login-password" placeholder="Enter your password">
+            </div>
+            <button id="login-button" class="btn btn-primary btn-full">Login</button>
+        </div>
+
+        <!-- REGISTER TAB -->
+        <div id="register-form" class="tab-content">
+            <div class="form-group">
+                <label for="register-role">I am a</label>
+                <select id="register-role">
+                    <option value="patient">Patient</option>
+                    <option value="doctor">Doctor</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="register-username">Username</label>
                     <input type="text" id="register-username" placeholder="Username">
-                    <input type="email" id="register-email" placeholder="Email">
+                </div>
+                <div class="form-group">
+                    <label for="register-email">Email</label>
+                    <input type="email" id="register-email" placeholder="you@example.com">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="register-password">Password</label>
                     <input type="password" id="register-password" placeholder="Password">
-                    <input type="text" id="register-full-name" placeholder="Full Name">
-                    <input type="text" id="register-specialization" placeholder="Specialization (doctors only)">
-                    <input type="text" id="register-working-days" placeholder="Working Days (Mon,Tue,Fri)">
-                    <input type="time" id="register-start-time" placeholder="Start Time">
-                    <input type="time" id="register-end-time" placeholder="End Time">
-                    <input type="number" id="register-age" placeholder="Age (patients only)">
-                    <input type="text" id="register-gender" placeholder="Gender (patients only)">
-                    <input type="text" id="register-phone" placeholder="Phone (patients only)">
-                    <input type="text" id="register-address" placeholder="Address (patients only)">
-                    <button id="register-button">Register</button>
                 </div>
-            </section>
+                <div class="form-group">
+                    <label for="register-full-name">Full Name</label>
+                    <input type="text" id="register-full-name" placeholder="Dr. Smith / John Doe">
+                </div>
+            </div>
 
-            <section class="card hidden" id="dashboard-section">
-                <h2>Dashboard</h2>
-                <div class="status-row">
-                    <span id="login-status"></span>
-                    <button id="logout-button">Logout</button>
+            <!-- Doctor-only fields -->
+            <div id="doctor-fields" class="hidden">
+                <div class="form-group">
+                    <label for="register-specialization">Specialization</label>
+                    <input type="text" id="register-specialization" placeholder="e.g. General Medicine">
                 </div>
-                <div class="actions">
-                    <button id="load-doctors-button">Load Doctors</button>
-                    <button id="view-appointments-button">My Appointments</button>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="register-working-days">Working Days</label>
+                        <input type="text" id="register-working-days" placeholder="Mon,Tue,Wed,Thu,Fri" value="Mon,Tue,Wed,Thu,Fri">
+                    </div>
+                    <div class="form-group">
+                        <label for="register-start-time">Start Time</label>
+                        <input type="time" id="register-start-time" value="09:00">
+                    </div>
                 </div>
+                <div class="form-group">
+                    <label for="register-end-time">End Time</label>
+                    <input type="time" id="register-end-time" value="17:00">
+                </div>
+            </div>
 
-                <div id="doctor-list" class="list"></div>
-                <div id="appointment-list" class="list"></div>
-                <div id="slot-section" class="hidden card">
-                    <h3>Available Slots</h3>
-                    <input type="date" id="slot-date">
-                    <button id="load-slots-button">Check Slots</button>
-                    <div id="slots-container" class="list"></div>
+            <!-- Patient-only fields -->
+            <div id="patient-fields">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="register-age">Age</label>
+                        <input type="number" id="register-age" placeholder="30">
+                    </div>
+                    <div class="form-group">
+                        <label for="register-gender">Gender</label>
+                        <input type="text" id="register-gender" placeholder="Male / Female / Other">
+                    </div>
                 </div>
-            </section>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="register-phone">Phone</label>
+                        <input type="text" id="register-phone" placeholder="9999999999">
+                    </div>
+                    <div class="form-group">
+                        <label for="register-address">Address (optional)</label>
+                        <input type="text" id="register-address" placeholder="123 Main St">
+                    </div>
+                </div>
+            </div>
 
-            <section class="card hidden" id="message-section">
-                <h2>Message</h2>
-                <div id="message-box"></div>
-            </section>
-        </main>
+            <button id="register-button" class="btn btn-primary btn-full">Register</button>
+        </div>
     </div>
-    <script src="/static/main.js"></script>
+</div>
+
+
+<!-- ================================================================ -->
+<!-- DASHBOARD VIEW — Shown after login                                -->
+<!-- ================================================================ -->
+<div id="dashboard-view" class="app-layout hidden">
+
+    <!-- ---- SIDEBAR ---- -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <h2>🏥 <span>Clinic</span></h2>
+            <p>Management System</p>
+        </div>
+        <nav class="sidebar-nav">
+            <button class="nav-link active" data-page="overview">
+                <span class="icon">📊</span> Overview
+            </button>
+            <button class="nav-link" data-page="doctors">
+                <span class="icon">👨‍⚕️</span> Doctors
+            </button>
+            <button class="nav-link" data-page="appointments">
+                <span class="icon">📅</span> Appointments
+            </button>
+            <button class="nav-link" data-page="records" id="nav-records">
+                <span class="icon">📋</span> Medical Records
+            </button>
+            <div class="nav-divider"></div>
+            <button class="nav-link hidden" data-page="schedule" id="nav-schedule">
+                <span class="icon">⏰</span> My Schedule
+            </button>
+        </nav>
+        <div class="sidebar-footer">
+            <button class="nav-link" id="logout-button">
+                <span class="icon">🚪</span> Logout
+            </button>
+        </div>
+    </aside>
+
+    <!-- ---- MAIN ---- -->
+    <div class="main-content">
+        <header class="content-header">
+            <h1 id="page-title">Overview</h1>
+            <span class="user-badge" id="user-badge"></span>
+        </header>
+
+        <div class="content-body">
+
+            <!-- ======== PAGE: OVERVIEW ======== -->
+            <section class="page-section active" id="page-overview">
+                <div class="stats-grid" id="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">👨‍⚕️</div>
+                        <div class="stat-label">Doctors</div>
+                        <div class="stat-value" id="stat-doctors">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📅</div>
+                        <div class="stat-label">My Appointments</div>
+                        <div class="stat-value" id="stat-appointments">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📋</div>
+                        <div class="stat-label">Medical Records</div>
+                        <div class="stat-value" id="stat-records">-</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title"><span class="icon">👋</span> Welcome</div>
+                    <p style="color:var(--text-secondary); font-size:.9rem;">
+                        Use the sidebar to navigate between sections. You can view doctors, manage appointments,
+                        and access medical records from their respective pages.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ======== PAGE: DOCTORS ======== -->
+            <section class="page-section" id="page-doctors">
+                <div class="actions-bar">
+                    <button class="btn btn-primary" id="load-doctors-button">Load Doctors</button>
+                </div>
+                <div class="data-list" id="doctor-list"></div>
+
+                <!-- Slot picker (shown when a doctor is selected) -->
+                <div id="slot-section" class="hidden" style="margin-top:20px;">
+                    <div class="card">
+                        <div class="card-title"><span class="icon">🕐</span> Available Slots</div>
+                        <div class="form-row" style="margin-bottom:12px;">
+                            <div class="form-group">
+                                <label for="slot-date">Select Date</label>
+                                <input type="date" id="slot-date">
+                            </div>
+                            <div class="form-group" style="display:flex;align-items:flex-end;">
+                                <button class="btn btn-primary" id="load-slots-button">Check Slots</button>
+                            </div>
+                        </div>
+                        <div id="slots-container" class="slot-grid"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ======== PAGE: APPOINTMENTS ======== -->
+            <section class="page-section" id="page-appointments">
+                <div class="actions-bar">
+                    <button class="btn btn-primary" id="view-appointments-button">Refresh Appointments</button>
+                </div>
+                <div class="data-list" id="appointment-list"></div>
+            </section>
+
+            <!-- ======== PAGE: MEDICAL RECORDS ======== -->
+            <section class="page-section" id="page-records">
+                <!-- Patient: view their records -->
+                <div id="patient-records-area">
+                    <div class="actions-bar">
+                        <button class="btn btn-primary" id="view-my-records-button">Load My Records</button>
+                    </div>
+                    <div class="data-list" id="records-list"></div>
+                </div>
+
+                <!-- Doctor: create a record -->
+                <div id="doctor-records-area" class="hidden" style="margin-top:20px;">
+                    <div class="card">
+                        <div class="card-title"><span class="icon">✍️</span> Write Medical Record</div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="record-patient-id">Patient ID</label>
+                                <input type="number" id="record-patient-id" placeholder="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="record-appointment-id">Appointment ID (optional)</label>
+                                <input type="number" id="record-appointment-id" placeholder="">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="record-diagnosis">Diagnosis</label>
+                            <textarea id="record-diagnosis" placeholder="Patient diagnosis..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="record-prescription">Prescription (optional)</label>
+                            <textarea id="record-prescription" placeholder="Medications, dosage..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="record-notes">Notes (optional)</label>
+                            <textarea id="record-notes" placeholder="Additional notes..."></textarea>
+                        </div>
+                        <button class="btn btn-success" id="submit-record-button" style="margin-top:8px;">Save Record</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ======== PAGE: MY SCHEDULE (Doctor only) ======== -->
+            <section class="page-section" id="page-schedule">
+                <div class="card">
+                    <div class="card-title"><span class="icon">⏰</span> Update My Schedule</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="avail-working-days">Working Days</label>
+                            <input type="text" id="avail-working-days" placeholder="Mon,Tue,Wed,Thu,Fri">
+                        </div>
+                        <div class="form-group">
+                            <label for="avail-start-time">Start Time</label>
+                            <input type="time" id="avail-start-time" value="09:00">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="avail-end-time">End Time</label>
+                        <input type="time" id="avail-end-time" value="17:00">
+                    </div>
+                    <button class="btn btn-success" id="save-availability-button" style="margin-top:8px;">Save Schedule</button>
+                </div>
+            </section>
+
+        </div><!-- /content-body -->
+    </div><!-- /main-content -->
+</div><!-- /dashboard-view -->
+
+
+<!-- ================================================================ -->
+<!-- TOAST NOTIFICATION                                                -->
+<!-- ================================================================ -->
+<div id="toast-container" class="toast-container hidden">
+    <div class="toast" id="toast-box"></div>
+</div>
+
+<script src="/static/main.js"></script>
 </body>
 </html>

@@ -1,265 +1,582 @@
-const authSection = document.getElementById("auth-section");
-const loginTab = document.getElementById("tab-login");
-const registerTab = document.getElementById("tab-register");
-const loginForm = document.getElementById("login-form");
-const registerForm = document.getElementById("register-form");
-const dashboardSection = document.getElementById("dashboard-section");
-const messageSection = document.getElementById("message-section");
-const messageBox = document.getElementById("message-box");
-const loginStatus = document.getElementById("login-status");
+/* =======================================================================
+   Clinic Appointment System — Dashboard Frontend Logic
+   Sidebar navigation + all backend endpoint integrations
+   ======================================================================= */
 
-const loginButton = document.getElementById("login-button");
-const registerButton = document.getElementById("register-button");
-const logoutButton = document.getElementById("logout-button");
-const loadDoctorsButton = document.getElementById("load-doctors-button");
-const viewAppointmentsButton = document.getElementById("view-appointments-button");
-const loadSlotsButton = document.getElementById("load-slots-button");
+const $ = (id) => document.getElementById(id);
 
-const doctorList = document.getElementById("doctor-list");
-const appointmentList = document.getElementById("appointment-list");
-const slotSection = document.getElementById("slot-section");
-const slotsContainer = document.getElementById("slots-container");
-const slotDateInput = document.getElementById("slot-date");
+// ---------------------------------------------------------------------------
+// DOM References
+// ---------------------------------------------------------------------------
+const authView       = $("auth-view");
+const dashboardView  = $("dashboard-view");
+const toastContainer = $("toast-container");
+const toastBox       = $("toast-box");
 
-const tokenKey = "clinic-token";
-const roleKey = "clinic-role";
+const loginTab       = $("tab-login");
+const registerTab    = $("tab-register");
+const loginForm      = $("login-form");
+const registerForm   = $("register-form");
 
-function showMessage(text) {
-    messageSection.classList.remove("hidden");
-    messageBox.textContent = text;
+const doctorFields   = $("doctor-fields");
+const patientFields  = $("patient-fields");
+const registerRole   = $("register-role");
+
+const pageTitle      = $("page-title");
+const userBadge      = $("user-badge");
+
+const doctorList     = $("doctor-list");
+const appointmentList= $("appointment-list");
+const recordsList    = $("records-list");
+const slotSection    = $("slot-section");
+const slotsContainer = $("slots-container");
+const slotDateInput  = $("slot-date");
+
+const TOKEN_KEY = "clinic-token";
+const ROLE_KEY  = "clinic-role";
+
+let selectedDoctorId = null;
+
+// ---------------------------------------------------------------------------
+// Toast notifications
+// ---------------------------------------------------------------------------
+function showToast(text, type = "info") {
+    toastContainer.classList.remove("hidden");
+    toastBox.className = "toast";
+    if (type === "error")   toastBox.classList.add("error");
+    if (type === "success") toastBox.classList.add("success");
+    toastBox.textContent = text;
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toastContainer.classList.add("hidden"), 5000);
 }
 
-function hideMessage() {
-    messageSection.classList.add("hidden");
-    messageBox.textContent = "";
+function parseError(data) {
+    if (typeof data.detail === "string") return data.detail;
+    if (Array.isArray(data.detail)) {
+        return data.detail.map((e) => {
+            const field = e.loc ? e.loc.filter(p => p !== "body").join(" > ") : "unknown";
+            return `${field}: ${e.msg}`;
+        }).join("\n");
+    }
+    return JSON.stringify(data);
 }
 
+function getRole()  { return localStorage.getItem(ROLE_KEY); }
+function getToken() { return localStorage.getItem(TOKEN_KEY); }
+function authHeaders() {
+    const t = getToken();
+    return t ? { Authorization: `Bearer ${t}`, "Content-Type": "application/json" }
+             : { "Content-Type": "application/json" };
+}
+
+// ---------------------------------------------------------------------------
+// Sidebar navigation
+// ---------------------------------------------------------------------------
+const PAGE_TITLES = {
+    overview: "Overview",
+    doctors: "Doctors Directory",
+    appointments: "My Appointments",
+    records: "Medical Records",
+    schedule: "My Schedule",
+};
+
+function navigateTo(pageName) {
+    // Update nav links
+    document.querySelectorAll(".nav-link[data-page]").forEach(link => {
+        link.classList.toggle("active", link.dataset.page === pageName);
+    });
+    // Update page sections
+    document.querySelectorAll(".page-section").forEach(sec => {
+        sec.classList.toggle("active", sec.id === `page-${pageName}`);
+    });
+    // Update header title
+    pageTitle.textContent = PAGE_TITLES[pageName] || pageName;
+
+    // Auto-load data when navigating
+    if (pageName === "overview")     loadOverviewStats();
+    if (pageName === "doctors")      loadDoctors();
+    if (pageName === "appointments") loadMyAppointments();
+}
+
+document.querySelectorAll(".nav-link[data-page]").forEach(link => {
+    link.addEventListener("click", () => navigateTo(link.dataset.page));
+});
+
+// ---------------------------------------------------------------------------
+// Session management
+// ---------------------------------------------------------------------------
 function setSession(token, role) {
-    localStorage.setItem(tokenKey, token);
-    localStorage.setItem(roleKey, role);
-    loginStatus.textContent = `Logged in as ${role}`;
-    authSection.classList.add("hidden");
-    dashboardSection.classList.remove("hidden");
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(ROLE_KEY, role);
+    authView.classList.add("hidden");
+    dashboardView.classList.remove("hidden");
+
+    userBadge.textContent = role === "doctor" ? "Doctor" : "Patient";
+
+    // Show/hide role-specific sidebar items
+    $("nav-schedule").classList.toggle("hidden", role !== "doctor");
+
+    // Medical records page: toggle patient vs doctor areas
+    $("patient-records-area").classList.toggle("hidden", role !== "patient");
+    $("doctor-records-area").classList.toggle("hidden", role !== "doctor");
+
+    navigateTo("overview");
 }
 
 function clearSession() {
-    localStorage.removeItem(tokenKey);
-    localStorage.removeItem(roleKey);
-    loginStatus.textContent = "";
-    authSection.classList.remove("hidden");
-    dashboardSection.classList.add("hidden");
-    slotSection.classList.add("hidden");
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(ROLE_KEY);
+    authView.classList.remove("hidden");
+    dashboardView.classList.add("hidden");
+    toastContainer.classList.add("hidden");
     doctorList.innerHTML = "";
     appointmentList.innerHTML = "";
+    recordsList.innerHTML = "";
     slotsContainer.innerHTML = "";
-    hideMessage();
+    slotSection.classList.add("hidden");
 }
 
-function getAuthHeaders() {
-    const token = localStorage.getItem(tokenKey);
-    return token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+// ---------------------------------------------------------------------------
+// Auth tabs
+// ---------------------------------------------------------------------------
+function setActiveTab(tab) {
+    loginTab.classList.toggle("active", tab === "login");
+    registerTab.classList.toggle("active", tab === "register");
+    loginForm.classList.toggle("active", tab === "login");
+    registerForm.classList.toggle("active", tab === "register");
 }
-
-function setActiveTab(tabName) {
-    if (tabName === "login") {
-        loginTab.classList.add("active");
-        registerTab.classList.remove("active");
-        loginForm.classList.add("active");
-        registerForm.classList.remove("active");
-    } else {
-        loginTab.classList.remove("active");
-        registerTab.classList.add("active");
-        loginForm.classList.remove("active");
-        registerForm.classList.add("active");
-    }
-}
-
 loginTab.addEventListener("click", () => setActiveTab("login"));
 registerTab.addEventListener("click", () => setActiveTab("register"));
 
-loginButton.addEventListener("click", async () => {
-    hideMessage();
-    const username = document.getElementById("login-username").value;
-    const password = document.getElementById("login-password").value;
+registerRole.addEventListener("change", () => {
+    const r = registerRole.value;
+    doctorFields.classList.toggle("hidden", r !== "doctor");
+    patientFields.classList.toggle("hidden", r !== "patient");
+});
+
+// ---------------------------------------------------------------------------
+// LOGIN
+// ---------------------------------------------------------------------------
+$("login-button").addEventListener("click", async () => {
+    const username = $("login-username").value.trim();
+    const password = $("login-password").value;
+    if (!username || !password) { showToast("Please enter username and password.", "error"); return; }
 
     try {
-        const response = await fetch("/auth/login", {
+        const res = await fetch("/auth/login", {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams({ username, password }),
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || JSON.stringify(data));
+        const data = await res.json();
+        if (!res.ok) throw new Error(parseError(data));
         setSession(data.access_token, data.role);
-        showMessage("Login successful. Load doctors or your appointments.");
+        showToast("Login successful!", "success");
     } catch (err) {
-        showMessage(`Login failed: ${err.message}`);
+        showToast(`Login failed: ${err.message}`, "error");
     }
 });
 
-registerButton.addEventListener("click", async () => {
-    hideMessage();
-    const role = document.getElementById("register-role").value;
+// ---------------------------------------------------------------------------
+// REGISTER
+// ---------------------------------------------------------------------------
+$("register-button").addEventListener("click", async () => {
+    const role = registerRole.value;
     const payload = {
-        username: document.getElementById("register-username").value,
-        email: document.getElementById("register-email").value,
-        password: document.getElementById("register-password").value,
-        full_name: document.getElementById("register-full-name").value,
+        username:  $("register-username").value.trim(),
+        email:     $("register-email").value.trim(),
+        password:  $("register-password").value,
+        full_name: $("register-full-name").value.trim(),
     };
+    if (!payload.username || !payload.email || !payload.password || !payload.full_name) {
+        showToast("Please fill in all required fields.", "error"); return;
+    }
 
     if (role === "doctor") {
-        payload.specialization = document.getElementById("register-specialization").value;
-        payload.working_days = document.getElementById("register-working-days").value;
-        payload.start_time = document.getElementById("register-start-time").value || "09:00";
-        payload.end_time = document.getElementById("register-end-time").value || "17:00";
+        payload.specialization = $("register-specialization").value.trim();
+        payload.working_days   = $("register-working-days").value.trim() || "Mon,Tue,Wed,Thu,Fri";
+        payload.start_time     = $("register-start-time").value || "09:00";
+        payload.end_time       = $("register-end-time").value || "17:00";
+        if (!payload.specialization) { showToast("Specialization is required.", "error"); return; }
     } else {
-        payload.age = parseInt(document.getElementById("register-age").value, 10);
-        payload.gender = document.getElementById("register-gender").value;
-        payload.phone = document.getElementById("register-phone").value;
-        payload.address = document.getElementById("register-address").value;
+        payload.age     = parseInt($("register-age").value, 10);
+        payload.gender  = $("register-gender").value.trim();
+        payload.phone   = $("register-phone").value.trim();
+        payload.address = $("register-address").value.trim() || null;
+        if (!payload.gender || !payload.phone || isNaN(payload.age)) {
+            showToast("Age, gender, and phone are required.", "error"); return;
+        }
     }
 
+    const url = role === "doctor" ? "/auth/register/doctor" : "/auth/register/patient";
     try {
-        const response = await fetch(role === "doctor" ? "/auth/register/doctor" : "/auth/register/patient", {
+        const res = await fetch(url, {
             method: "POST",
-            headers: getAuthHeaders(),
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || JSON.stringify(data));
-        showMessage(`${role.charAt(0).toUpperCase() + role.slice(1)} registration successful. Please login.`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(parseError(data));
+        showToast(`Registered successfully! Please login.`, "success");
         setActiveTab("login");
     } catch (err) {
-        showMessage(`Registration failed: ${err.message}`);
+        showToast(`Registration failed: ${err.message}`, "error");
     }
 });
 
-logoutButton.addEventListener("click", () => {
+// ---------------------------------------------------------------------------
+// LOGOUT
+// ---------------------------------------------------------------------------
+$("logout-button").addEventListener("click", () => {
     clearSession();
-    showMessage("Logged out.");
+    showToast("Logged out.", "info");
 });
 
-loadDoctorsButton.addEventListener("click", async () => {
-    hideMessage();
-    doctorList.innerHTML = "Loading doctors...";
+// ---------------------------------------------------------------------------
+// OVERVIEW — load stats
+// ---------------------------------------------------------------------------
+async function loadOverviewStats() {
     try {
-        const response = await fetch("/doctors", { headers: getAuthHeaders() });
-        const doctors = await response.json();
-        if (!response.ok) throw new Error(doctors.detail || JSON.stringify(doctors));
-        doctorList.innerHTML = "";
-        doctors.forEach((doctor) => {
-            const item = document.createElement("div");
-            item.className = "list-item";
-            item.innerHTML = `
-                <strong>${doctor.full_name}</strong> — ${doctor.specialization}
-                <p>Working: ${doctor.working_days} ${doctor.start_time}-${doctor.end_time}</p>
-                <button data-doctor-id="${doctor.id}">Check available slots</button>
-            `;
-            const button = item.querySelector("button");
-            button.addEventListener("click", () => loadSlotsForDoctor(doctor.id));
-            doctorList.appendChild(item);
-        });
-        slotSection.classList.remove("hidden");
-    } catch (err) {
-        doctorList.innerHTML = "";
-        showMessage(`Could not load doctors: ${err.message}`);
+        const [docRes, apptRes] = await Promise.all([
+            fetch("/doctors", { headers: authHeaders() }),
+            fetch("/appointments/me", { headers: authHeaders() }),
+        ]);
+        const doctors = await docRes.json();
+        const appts   = await apptRes.json();
+
+        $("stat-doctors").textContent      = docRes.ok ? doctors.length : "-";
+        $("stat-appointments").textContent  = apptRes.ok ? appts.length : "-";
+
+        // Records stat depends on role
+        if (getRole() === "patient") {
+            const recRes = await fetch("/medical-records/me", { headers: authHeaders() });
+            const recs = await recRes.json();
+            $("stat-records").textContent = recRes.ok ? recs.length : "-";
+        } else {
+            $("stat-records").textContent = "--";
+        }
+    } catch {
+        // silently fail — stats are best-effort
     }
-});
+}
 
-viewAppointmentsButton.addEventListener("click", async () => {
-    hideMessage();
-    appointmentList.innerHTML = "Loading appointments...";
+// ---------------------------------------------------------------------------
+// DOCTORS — list
+// ---------------------------------------------------------------------------
+$("load-doctors-button").addEventListener("click", loadDoctors);
+
+async function loadDoctors() {
+    doctorList.innerHTML = '<div class="empty-state"><span class="empty-icon">⏳</span>Loading doctors...</div>';
     try {
-        const response = await fetch("/appointments/me", { headers: getAuthHeaders() });
-        const appointments = await response.json();
-        if (!response.ok) throw new Error(appointments.detail || JSON.stringify(appointments));
-        appointmentList.innerHTML = "";
-        if (appointments.length === 0) {
-            appointmentList.innerHTML = "No appointments found.";
+        const res = await fetch("/doctors", { headers: authHeaders() });
+        const doctors = await res.json();
+        if (!res.ok) throw new Error(parseError(doctors));
+
+        doctorList.innerHTML = "";
+        if (doctors.length === 0) {
+            doctorList.innerHTML = '<div class="empty-state"><span class="empty-icon">👨‍⚕️</span>No doctors registered yet.</div>';
             return;
         }
-        appointments.forEach((appointment) => {
-            const item = document.createElement("div");
-            item.className = "list-item";
-            item.innerHTML = `
-                <strong>Appointment #${appointment.id}</strong>
-                <p>Doctor ID: ${appointment.doctor_id}</p>
-                <p>Time: ${new Date(appointment.appointment_time).toLocaleString()}</p>
-                <p>Status: ${appointment.status}</p>
-                <p>Reason: ${appointment.reason || "None"}</p>
+
+        doctors.forEach(doc => {
+            const el = document.createElement("div");
+            el.className = "data-item";
+            el.innerHTML = `
+                <div class="data-item-header">
+                    <strong>${doc.full_name}</strong>
+                    <span class="badge badge-primary">${doc.specialization}</span>
+                </div>
+                <p class="meta">📅 ${doc.working_days} &nbsp;|&nbsp; 🕘 ${doc.start_time} – ${doc.end_time}</p>
+                <div class="item-actions">
+                    <button class="btn-sm" data-doc-id="${doc.id}">Check Available Slots</button>
+                </div>
             `;
-            appointmentList.appendChild(item);
+            el.querySelector("[data-doc-id]").addEventListener("click", () => {
+                selectedDoctorId = doc.id;
+                slotSection.classList.remove("hidden");
+                slotsContainer.innerHTML = "";
+                showToast(`Selected Dr. ${doc.full_name}. Pick a date and click "Check Slots".`, "info");
+            });
+            doctorList.appendChild(el);
         });
     } catch (err) {
-        appointmentList.innerHTML = "";
-        showMessage(`Could not load appointments: ${err.message}`);
+        doctorList.innerHTML = "";
+        showToast(`Could not load doctors: ${err.message}`, "error");
     }
+}
+
+// ---------------------------------------------------------------------------
+// SLOTS
+// ---------------------------------------------------------------------------
+$("load-slots-button").addEventListener("click", () => {
+    if (!selectedDoctorId) { showToast("Select a doctor first.", "error"); return; }
+    loadSlots(selectedDoctorId);
 });
 
-loadSlotsButton.addEventListener("click", () => {
-    const selectedDoctorButton = doctorList.querySelector("button[data-doctor-id]");
-    if (!selectedDoctorButton) {
-        showMessage("Load doctors first, then choose a doctor to check slots.");
-        return;
-    }
-    const doctorId = selectedDoctorButton.dataset.doctorId;
-    loadSlotsForDoctor(doctorId);
-});
-
-async function loadSlotsForDoctor(doctorId) {
-    hideMessage();
+async function loadSlots(docId) {
     const date = slotDateInput.value;
-    if (!date) {
-        showMessage("Please select a date to check available slots.");
-        return;
-    }
-    slotsContainer.innerHTML = "Loading slots...";
+    if (!date) { showToast("Please select a date.", "error"); return; }
+    slotsContainer.innerHTML = '<div class="empty-state">Loading...</div>';
+
     try {
-        const response = await fetch(`/doctors/${doctorId}/available-slots?date=${date}`, { headers: getAuthHeaders() });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || JSON.stringify(data));
+        const res = await fetch(`/doctors/${docId}/available-slots?date=${date}`, { headers: authHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(parseError(data));
+
         slotsContainer.innerHTML = "";
         if (!data.available_slots || data.available_slots.length === 0) {
-            slotsContainer.innerHTML = `<div class='list-item'>No available slots for ${date}.</div>`;
+            slotsContainer.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">${data.note || "No available slots."}</div>`;
             return;
         }
-        data.available_slots.forEach((slot) => {
-            const item = document.createElement("div");
-            item.className = "list-item";
-            item.innerHTML = `
-                <strong>${slot}</strong>
-                <button data-slot="${slot}" data-doctor-id="${doctorId}">Book slot</button>
+
+        data.available_slots.forEach(slot => {
+            const chip = document.createElement("div");
+            chip.className = "slot-chip";
+            chip.innerHTML = `
+                <span>${slot}</span>
+                ${getRole() === "patient" ? `<button>Book</button>` : ""}
             `;
-            item.querySelector("button").addEventListener("click", () => bookSlot(doctorId, date, slot));
-            slotsContainer.appendChild(item);
+            const bookBtn = chip.querySelector("button");
+            if (bookBtn) bookBtn.addEventListener("click", () => bookSlot(docId, date, slot));
+            slotsContainer.appendChild(chip);
         });
     } catch (err) {
         slotsContainer.innerHTML = "";
-        showMessage(`Could not load available slots: ${err.message}`);
+        showToast(`Could not load slots: ${err.message}`, "error");
     }
 }
 
-async function bookSlot(doctorId, date, slot) {
-    hideMessage();
-    const appointmentTime = `${date}T${slot}:00`;
+// ---------------------------------------------------------------------------
+// BOOK APPOINTMENT
+// ---------------------------------------------------------------------------
+async function bookSlot(docId, date, slot) {
     try {
-        const response = await fetch("/appointments", {
+        const res = await fetch("/appointments", {
             method: "POST",
-            headers: getAuthHeaders(),
-            body: JSON.stringify({ doctor_id: Number(doctorId), appointment_time: appointmentTime, reason: "Booked from UI" }),
+            headers: authHeaders(),
+            body: JSON.stringify({ doctor_id: Number(docId), appointment_time: `${date}T${slot}:00`, reason: "Booked from UI" }),
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || JSON.stringify(data));
-        showMessage(`Appointment booked for ${appointmentTime}.`);
-        await viewAppointmentsButton.click();
+        const data = await res.json();
+        if (!res.ok) throw new Error(parseError(data));
+        showToast(`Appointment booked for ${date} at ${slot}.`, "success");
+        loadSlots(docId);
+        loadMyAppointments();
     } catch (err) {
-        showMessage(`Could not book appointment: ${err.message}`);
+        showToast(`Could not book: ${err.message}`, "error");
     }
 }
 
+// ---------------------------------------------------------------------------
+// APPOINTMENTS — view mine
+// ---------------------------------------------------------------------------
+$("view-appointments-button").addEventListener("click", loadMyAppointments);
+
+async function loadMyAppointments() {
+    appointmentList.innerHTML = '<div class="empty-state"><span class="empty-icon">⏳</span>Loading...</div>';
+    try {
+        const res = await fetch("/appointments/me", { headers: authHeaders() });
+        const appts = await res.json();
+        if (!res.ok) throw new Error(parseError(appts));
+
+        appointmentList.innerHTML = "";
+        if (appts.length === 0) {
+            appointmentList.innerHTML = '<div class="empty-state"><span class="empty-icon">📅</span>No appointments yet.</div>';
+            return;
+        }
+
+        const role = getRole();
+        appts.forEach(appt => {
+            const el = document.createElement("div");
+            el.className = "data-item";
+            const time = new Date(appt.appointment_time).toLocaleString();
+            el.innerHTML = `
+                <div class="data-item-header">
+                    <strong>Appointment #${appt.id}</strong>
+                    <span class="badge badge-${appt.status}">${appt.status}</span>
+                </div>
+                <p class="meta">🩺 Doctor ID: ${appt.doctor_id} &nbsp;|&nbsp; 🧑 Patient ID: ${appt.patient_id}</p>
+                <p class="meta">🕐 ${time}</p>
+                <p class="meta">📝 ${appt.reason || "No reason given"}</p>
+                <div class="item-actions" id="appt-act-${appt.id}"></div>
+            `;
+
+            const actions = el.querySelector(`#appt-act-${appt.id}`);
+            if (appt.status === "scheduled") {
+                if (role === "patient") {
+                    const btn = document.createElement("button");
+                    btn.className = "btn-danger";
+                    btn.textContent = "Cancel";
+                    btn.addEventListener("click", () => cancelAppointment(appt.id));
+                    actions.appendChild(btn);
+                }
+                if (role === "doctor") {
+                    const cBtn = document.createElement("button");
+                    cBtn.className = "btn-success";
+                    cBtn.textContent = "Complete";
+                    cBtn.addEventListener("click", () => updateStatus(appt.id, "completed"));
+                    actions.appendChild(cBtn);
+
+                    const xBtn = document.createElement("button");
+                    xBtn.className = "btn-danger";
+                    xBtn.textContent = "Cancel";
+                    xBtn.addEventListener("click", () => updateStatus(appt.id, "cancelled"));
+                    actions.appendChild(xBtn);
+                }
+            }
+            if (role === "doctor" && appt.status === "completed") {
+                const rBtn = document.createElement("button");
+                rBtn.className = "btn-outline";
+                rBtn.textContent = "Write Record";
+                rBtn.addEventListener("click", () => {
+                    navigateTo("records");
+                    $("record-patient-id").value = appt.patient_id;
+                    $("record-appointment-id").value = appt.id;
+                });
+                actions.appendChild(rBtn);
+            }
+
+            appointmentList.appendChild(el);
+        });
+    } catch (err) {
+        appointmentList.innerHTML = "";
+        showToast(`Could not load appointments: ${err.message}`, "error");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CANCEL APPOINTMENT (patient)
+// ---------------------------------------------------------------------------
+async function cancelAppointment(id) {
+    try {
+        const res = await fetch(`/appointments/${id}`, { method: "DELETE", headers: authHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(parseError(data));
+        showToast(`Appointment #${id} cancelled.`, "success");
+        loadMyAppointments();
+    } catch (err) {
+        showToast(`Could not cancel: ${err.message}`, "error");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// UPDATE STATUS (doctor)
+// ---------------------------------------------------------------------------
+async function updateStatus(id, status) {
+    try {
+        const res = await fetch(`/appointments/${id}/status`, {
+            method: "PUT", headers: authHeaders(),
+            body: JSON.stringify({ status }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(parseError(data));
+        showToast(`Appointment #${id} marked as ${status}.`, "success");
+        loadMyAppointments();
+    } catch (err) {
+        showToast(`Could not update: ${err.message}`, "error");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MEDICAL RECORDS — patient views theirs
+// ---------------------------------------------------------------------------
+$("view-my-records-button").addEventListener("click", loadMyRecords);
+
+async function loadMyRecords() {
+    recordsList.innerHTML = '<div class="empty-state"><span class="empty-icon">⏳</span>Loading...</div>';
+    try {
+        const res = await fetch("/medical-records/me", { headers: authHeaders() });
+        const recs = await res.json();
+        if (!res.ok) throw new Error(parseError(recs));
+
+        recordsList.innerHTML = "";
+        if (recs.length === 0) {
+            recordsList.innerHTML = '<div class="empty-state"><span class="empty-icon">📋</span>No medical records yet.</div>';
+            return;
+        }
+
+        recs.forEach(rec => {
+            const el = document.createElement("div");
+            el.className = "data-item";
+            el.innerHTML = `
+                <div class="data-item-header">
+                    <strong>Record #${rec.id}</strong>
+                    <span class="badge badge-primary">Doctor #${rec.doctor_id}</span>
+                </div>
+                ${rec.appointment_id ? `<p class="meta">Appointment #${rec.appointment_id}</p>` : ""}
+                <p class="meta"><b>Diagnosis:</b> ${rec.diagnosis}</p>
+                ${rec.prescription ? `<p class="meta"><b>Prescription:</b> ${rec.prescription}</p>` : ""}
+                ${rec.notes ? `<p class="meta"><b>Notes:</b> ${rec.notes}</p>` : ""}
+                <p class="meta" style="color:var(--text-muted);font-size:.78rem;">Created: ${new Date(rec.created_at).toLocaleString()}</p>
+            `;
+            recordsList.appendChild(el);
+        });
+    } catch (err) {
+        recordsList.innerHTML = "";
+        showToast(`Could not load records: ${err.message}`, "error");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MEDICAL RECORDS — doctor creates one
+// ---------------------------------------------------------------------------
+$("submit-record-button").addEventListener("click", async () => {
+    const patientId     = parseInt($("record-patient-id").value, 10);
+    const appointmentId = $("record-appointment-id").value ? parseInt($("record-appointment-id").value, 10) : null;
+    const diagnosis     = $("record-diagnosis").value.trim();
+    const prescription  = $("record-prescription").value.trim() || null;
+    const notes         = $("record-notes").value.trim() || null;
+
+    if (isNaN(patientId) || !diagnosis) {
+        showToast("Patient ID and Diagnosis are required.", "error"); return;
+    }
+
+    try {
+        const res = await fetch("/medical-records", {
+            method: "POST", headers: authHeaders(),
+            body: JSON.stringify({ patient_id: patientId, appointment_id: appointmentId, diagnosis, prescription, notes }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(parseError(data));
+        showToast("Medical record saved.", "success");
+        $("record-diagnosis").value = "";
+        $("record-prescription").value = "";
+        $("record-notes").value = "";
+    } catch (err) {
+        showToast(`Could not save record: ${err.message}`, "error");
+    }
+});
+
+// ---------------------------------------------------------------------------
+// DOCTOR — update availability
+// ---------------------------------------------------------------------------
+$("save-availability-button").addEventListener("click", async () => {
+    const working_days = $("avail-working-days").value.trim();
+    const start_time   = $("avail-start-time").value;
+    const end_time     = $("avail-end-time").value;
+    if (!working_days || !start_time || !end_time) {
+        showToast("Please fill in all schedule fields.", "error"); return;
+    }
+    try {
+        const res = await fetch("/doctors/me/availability", {
+            method: "PUT", headers: authHeaders(),
+            body: JSON.stringify({ working_days, start_time, end_time }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(parseError(data));
+        showToast("Schedule updated.", "success");
+    } catch (err) {
+        showToast(`Could not update schedule: ${err.message}`, "error");
+    }
+});
+
+// ---------------------------------------------------------------------------
+// INIT
+// ---------------------------------------------------------------------------
 function init() {
-    if (localStorage.getItem(tokenKey)) {
-        setSession(localStorage.getItem(tokenKey), localStorage.getItem(roleKey));
+    const token = getToken();
+    const role  = getRole();
+    if (token && role) {
+        setSession(token, role);
     } else {
         clearSession();
     }
